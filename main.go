@@ -42,5 +42,5 @@ func main() {
 
 	direct.Execute(context.Background(), p)
 
-	log.Println("Pipeline Done in: ", time.Since(startLogging).Seconds())
+	log.Println("Pipeline Done in: ", time.Since(startLogging).Seconds(), "second")
 }
