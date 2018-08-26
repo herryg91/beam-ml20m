@@ -13,17 +13,17 @@ import (
 )
 
 type pipelineParam struct {
-	Rows       []string
-	OutputFile *bufio.Writer
-	Lock       *sync.Mutex
+	Rows          []string
+	OutputFile    *bufio.Writer
+	Lock          *sync.Mutex
+	MovieInstance *movie.Instance
 }
 
 func processToPipeline(param pipelineParam) {
 	p, s := beam.NewPipelineWithRoot()
-	movieInstance := movie.New()
 
 	lines := beam.CreateList(s, param.Rows)
-	p1 := GetUserGenreTendency(s, lines, movieInstance)
+	p1 := GetUserGenreTendency(s, lines, param.MovieInstance)
 	p2 := GetTopThreeUserGenreTendency(s, p1)
 
 	beam.ParDo0(s, func(userID int, datas []UserGenreScore) {

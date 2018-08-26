@@ -41,7 +41,11 @@ func (i *Instance) generateToCache() {
 			log.Println("[error]", errParse, movieAttr)
 			continue
 		}
-		genres := strings.Split(movieAttr[2], "|")
+
+		genresStr := strings.Replace(movieAttr[2], ",(no genres listed),", ",", -1)
+		genresStr = strings.Replace(genresStr, "(no genres listed),", "", -1)
+		genresStr = strings.Replace(genresStr, ",(no genres listed)", "", -1)
+		genres := strings.Split(genresStr, "|")
 		movieInfo := Movie{
 			ID:     movid,
 			Name:   movieAttr[1],

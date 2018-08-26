@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/apache/beam/sdks/go/pkg/beam/io/filesystem/local"
+	"github.com/herryg91/beam-ml20m/movie"
 )
 
 func main() {
@@ -23,6 +24,8 @@ func main() {
 	for w := 1; w <= *workerSize; w++ {
 		go pipelineWorker(w, jobs, wg)
 	}
+
+	movieInstance := movie.New()
 
 	/*Setup Output File*/
 	fileOutput, err := os.OpenFile(*output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
@@ -56,7 +59,7 @@ func main() {
 			if totalUid >= *batchSize {
 				if len(datasToBeProcessed) > 0 {
 					wg.Add(1)
-					jobs <- pipelineParam{Rows: datasToBeProcessed, OutputFile: bufOutput, Lock: lock}
+					jobs <- pipelineParam{Rows: datasToBeProcessed, OutputFile: bufOutput, Lock: lock, MovieInstance: movieInstance}
 				}
 				datasToBeProcessed = datasToBeProcessed[:0]
 				totalUid = 0
@@ -69,7 +72,7 @@ func main() {
 	}
 	if len(datasToBeProcessed) > 0 {
 		wg.Add(1)
-		jobs <- pipelineParam{Rows: datasToBeProcessed, OutputFile: bufOutput, Lock: lock}
+		jobs <- pipelineParam{Rows: datasToBeProcessed, OutputFile: bufOutput, Lock: lock, MovieInstance: movieInstance}
 	}
 	close(jobs)
 
