@@ -1,46 +1,78 @@
 package main
 
 import (
+	"bufio"
 	"context"
-	"flag"
 	"fmt"
 	"log"
-	"strings"
+	"os"
+	"sync"
 	"time"
 
-	"github.com/apache/beam/sdks/go/pkg/beam"
 	"github.com/apache/beam/sdks/go/pkg/beam/io/filesystem/local"
-	"github.com/apache/beam/sdks/go/pkg/beam/io/textio"
-	"github.com/apache/beam/sdks/go/pkg/beam/runners/direct"
-	"github.com/herryg91/beam-ml20m/movie"
 )
 
 func main() {
 	startLogging := time.Now()
-	flag.Parse()
-
-	// beam.Init()
-	p := beam.NewPipeline()
-	s := p.Root()
+	initFlag()
 	local.New(context.Background())
 
-	lines := textio.Read(s, *input)
+	wg := &sync.WaitGroup{}
 
-	movieInstance := movie.New()
+	jobs := make(chan pipelineParam, *workerSize)
+	for w := 1; w <= *workerSize; w++ {
+		go pipelineWorker(w, jobs, wg)
+	}
 
-	p1 := GetUserGenreTendency(s, lines, movieInstance)
-	p2 := GetTopThreeUserGenreTendency(s, p1)
+	/*Setup Output File*/
+	fileOutput, err := os.OpenFile(*output, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0600)
+	if err != nil {
+		panic(err)
+	}
+	defer fileOutput.Close()
+	bufOutput := bufio.NewWriter(fileOutput)
 
-	outputToWrite := beam.ParDo(s, func(userID int, datas []UserGenreScore, emit func(string)) {
-		genres := []string{}
-		for _, data := range datas {
-			genres = append(genres, data.Genre)
+	/* Setup Read File*/
+	fileInput, _ := os.Open(*input)
+	defer fileInput.Close()
+	scanner := bufio.NewScanner(fileInput)
+	scanner.Split(bufio.ScanLines)
+
+	/*Batching File & Sent it to Pipeline*/
+	currentUserID := -1
+	totalUid := 0
+	datasToBeProcessed := []string{}
+	lock := &sync.Mutex{}
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		var uid int
+		_, errParse := fmt.Sscanf(line, "%d,", &uid)
+		if errParse != nil {
+			continue
 		}
-		emit(fmt.Sprintf("%d,%s", userID, strings.Join(genres, "|")))
-	}, p2)
-	textio.Write(s, *output, outputToWrite)
 
-	direct.Execute(context.Background(), p)
+		if currentUserID != uid {
+			if totalUid >= *batchSize {
+				if len(datasToBeProcessed) > 0 {
+					wg.Add(1)
+					jobs <- pipelineParam{Rows: datasToBeProcessed, OutputFile: bufOutput, Lock: lock}
+				}
+				datasToBeProcessed = datasToBeProcessed[:0]
+				totalUid = 0
+			}
+			currentUserID = uid
+			totalUid++
+		}
 
+		datasToBeProcessed = append(datasToBeProcessed, line)
+	}
+	if len(datasToBeProcessed) > 0 {
+		wg.Add(1)
+		jobs <- pipelineParam{Rows: datasToBeProcessed, OutputFile: bufOutput, Lock: lock}
+	}
+	close(jobs)
+
+	wg.Wait()
 	log.Println("Pipeline Done in: ", time.Since(startLogging).Seconds(), "second")
 }
